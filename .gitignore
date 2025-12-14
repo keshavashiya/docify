@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# FastAPI
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+
+# Database
+*.db
+*.sqlite3
+
+# Uploads
+uploads/
+*.pdf
+*.docx
+*.xlsx
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Node.js (frontend)
+node_modules/
+dist/
+build/
+.next/
+.nuxt/
+.cache/
+
+# Docker
+docker-compose.override.yml
+
+# Models (downloaded embeddings/LLMs - not code models)
+/models/
+*.bin
+*.pt
+*.pth
+
+# Alembic
+alembic/versions/*.pyc
