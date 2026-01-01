@@ -30,7 +30,8 @@ class LLMService:
         model: Optional[str] = None,
         max_tokens: int = 1000,
         temperature: float = 0.3,
-        top_p: float = 0.9
+        top_p: float = 0.9,
+        options: Optional[Dict] = None
     ) -> str:
         """
         Call local Ollama LLM with streaming for faster response times.
@@ -41,6 +42,7 @@ class LLMService:
             max_tokens: Maximum tokens to generate
             temperature: Sampling temperature (0-1, lower = deterministic)
             top_p: Nucleus sampling parameter
+            options: Optional dictionary of additional Ollama options
 
         Returns:
             Generated text response
@@ -50,28 +52,29 @@ class LLMService:
         try:
             # Get hardware-aware options
             hw_options = self.hardware.get_ollama_options()
-            
+
             # Use streaming for faster time-to-first-token
             # Adjust timeout based on hardware (CPU needs more time)
             timeout = 600 if not self.hardware.has_gpu() else 300
-            
+
             async with httpx.AsyncClient(timeout=timeout) as client:
-                # Build options, filtering out None values
-                options = {
-                    "temperature": hw_options.get("temperature", temperature),
-                    "top_p": hw_options.get("top_p", top_p),
-                    "num_predict": hw_options.get("num_predict", max_tokens),
+                # Merge passed options with hardware defaults
+                merged_options = {
+                    "temperature": temperature,
+                    "top_p": top_p,
+                    "num_predict": max_tokens,
                 }
-                if hw_options.get("num_thread"):
-                    options["num_thread"] = hw_options.get("num_thread")
-                
+                merged_options.update(hw_options)
+                if options:
+                    merged_options.update(options)
+
                 response = await client.post(
                     f"{self.ollama_base_url}/api/generate",
                     json={
                         "model": model,
                         "prompt": prompt,
                         "stream": True,  # Stream for faster response
-                        "options": options
+                        "options": merged_options
                     }
                 )
 
@@ -81,15 +84,20 @@ class LLMService:
 
                 # Collect streamed response
                 full_response = ""
+                metrics = {"prompt_eval_count": 0, "eval_count": 0}
                 async for line in response.aiter_lines():
                     if line.strip():
                         try:
                             chunk = json.loads(line)
                             full_response += chunk.get("response", "")
+                            if chunk.get("done"):
+                                metrics["prompt_eval_count"] = chunk.get("prompt_eval_count", 0)
+                                metrics["eval_count"] = chunk.get("eval_count", 0)
+                                metrics["total_duration"] = chunk.get("total_duration", 0)
                         except json.JSONDecodeError:
                             pass
-                
-                return full_response.strip()
+
+                return full_response.strip(), metrics
 
         except httpx.ConnectError:
             logger.error("Cannot connect to Ollama. Is it running?")
@@ -136,7 +144,10 @@ class LLMService:
                 temperature=temperature
             )
 
-            return response['choices'][0]['message']['content'].strip()
+            return response['choices'][0]['message']['content'].strip(), {
+                "prompt_eval_count": response.get('usage', {}).get('prompt_tokens', 0),
+                "eval_count": response.get('usage', {}).get('completion_tokens', 0)
+            }
 
         except ImportError:
             raise Exception("OpenAI package not installed. Install with: pip install openai")
@@ -180,7 +191,10 @@ class LLMService:
                 ]
             )
 
-            return response.content[0].text.strip()
+            return response.content[0].text.strip(), {
+                "prompt_eval_count": response.usage.input_tokens if hasattr(response, 'usage') else 0,
+                "eval_count": response.usage.output_tokens if hasattr(response, 'usage') else 0
+            }
 
         except ImportError:
             raise Exception("Anthropic package not installed. Install with: pip install anthropic")
@@ -195,23 +209,20 @@ class LLMService:
         model: Optional[str] = None,
         max_tokens: int = 1000,
         temperature: float = 0.3,
+        options: Optional[Dict] = None,
         **kwargs
     ) -> str:
         """
         Generic call method that routes to appropriate provider.
-
-        Args:
-            prompt: The prompt to send
-            provider: "ollama", "openai", or "anthropic"
-            model: Model name
-            max_tokens: Maximum tokens to generate
-            temperature: Sampling temperature
-
-        Returns:
-            Generated text response
         """
         if provider == "ollama":
-            return await self.call_ollama(prompt, model, max_tokens, temperature)
+            return await self.call_ollama(
+                prompt,
+                model=model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                options=options
+            )
         elif provider == "openai":
             return await self.call_openai(prompt, model, max_tokens, temperature)
         elif provider == "anthropic":
@@ -241,7 +252,7 @@ class LLMService:
         """
         import json
 
-        response_text = await self.call(
+        response_text, _ = await self.call(
             prompt,
             provider=provider,
             model=model,
@@ -311,7 +322,7 @@ def call_llm(
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
-    return loop.run_until_complete(
+    res, _ = loop.run_until_complete(
         llm.call(
             prompt,
             provider=provider,
@@ -320,3 +331,4 @@ def call_llm(
             temperature=temperature
         )
     )
+    return res

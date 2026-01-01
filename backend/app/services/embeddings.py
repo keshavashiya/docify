@@ -19,11 +19,11 @@ class EmbeddingsService:
     def __init__(self):
         """Initialize embeddings service with Ollama backend"""
         self.ollama_url = settings.OLLAMA_BASE_URL
-        self.model_name = "all-minilm:22m"  # Fast, lightweight embeddings
-        self.embedding_dimension = 384  # all-minilm:22m dimension
-        
+        self.model_name = settings.EMBEDDING_MODEL
+        self.embedding_dimension = settings.EMBEDDING_DIMENSION
+
         logger.info(f"Embeddings Service initialized with Ollama at {self.ollama_url}")
-        logger.info(f"Using model: {self.model_name}")
+        logger.info(f"Using model: {self.model_name} ({self.embedding_dimension} dims)")
 
     def embed(self, text: str) -> Optional[List[float]]:
         """
@@ -43,7 +43,7 @@ class EmbeddingsService:
             response = requests.post(
                 f"{self.ollama_url}/api/embeddings",
                 json={
-                    "model": self.model_name, 
+                    "model": self.model_name,
                     "prompt": text,
                     "options": {
                         "num_ctx": 2048
@@ -53,12 +53,12 @@ class EmbeddingsService:
             )
             response.raise_for_status()
             data = response.json()
-            
+
             embedding = data.get("embedding")
             if not embedding:
                 logger.error(f"No embedding in Ollama response. Response: {data}")
                 return None
-            
+
             # Verify dimension
             if len(embedding) != self.embedding_dimension:
                 logger.error(
@@ -66,7 +66,7 @@ class EmbeddingsService:
                     f"got {len(embedding)}"
                 )
                 return None
-            
+
             return embedding
 
         except Exception as e:
@@ -91,7 +91,7 @@ class EmbeddingsService:
         try:
             # Filter out empty texts
             non_empty_texts = [(i, t) for i, t in enumerate(texts) if t and len(t.strip()) > 0]
-            
+
             if not non_empty_texts:
                 logger.warning("All texts were empty")
                 return [None] * len(texts)
@@ -99,17 +99,17 @@ class EmbeddingsService:
             logger.info(f"Generating embeddings for {len(non_empty_texts)} texts via Ollama")
 
             embeddings = [None] * len(texts)
-            
+
             # Process texts sequentially (one at a time for stability)
             for i, (original_idx, text) in enumerate(non_empty_texts):
                 try:
                     # Truncate text if too long (max 2000 chars for safety)
                     truncated_text = text[:2000] if len(text) > 2000 else text
-                    
+
                     response = requests.post(
                         f"{self.ollama_url}/api/embeddings",
                         json={
-                            "model": self.model_name, 
+                            "model": self.model_name,
                             "prompt": truncated_text,
                             "options": {
                                 "num_ctx": 2048  # nomic-embed-text max context
@@ -120,7 +120,7 @@ class EmbeddingsService:
                     response.raise_for_status()
                     data = response.json()
                     embedding = data.get("embedding")
-                    
+
                     if embedding and len(embedding) == self.embedding_dimension:
                         embeddings[original_idx] = embedding
                         if (i + 1) % 5 == 0:

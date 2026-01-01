@@ -41,3 +41,6 @@ pytest==7.4.3
 pytest-asyncio==0.21.1
 pytest-cov==4.1.0
 httpx==0.25.1
+
+# BM25 for keyword search (Phase 3)
+rank-bm25==0.2.2

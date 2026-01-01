@@ -43,7 +43,7 @@ def create_conversation(
 ):
     """
     Create a new conversation.
-    
+
     A conversation belongs to a workspace and contains messages between
     the user and the AI assistant.
     """
@@ -53,7 +53,7 @@ def create_conversation(
     ).first()
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
-    
+
     db_conversation = Conversation(
         workspace_id=conversation.workspace_id,
         title=conversation.title,
@@ -74,18 +74,18 @@ def list_conversations(
 ):
     """
     List conversations, optionally filtered by workspace.
-    
+
     Returns conversations ordered by most recently updated first.
     """
     query = db.query(Conversation)
-    
+
     if workspace_id:
         query = query.filter(Conversation.workspace_id == workspace_id)
-    
+
     conversations = query.order_by(
         Conversation.updated_at.desc()
     ).offset(skip).limit(limit).all()
-    
+
     return conversations
 
 
@@ -101,10 +101,10 @@ def get_conversation(
     conversation = db.query(Conversation).filter(
         Conversation.id == conversation_id
     ).first()
-    
+
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    
+
     return conversation
 
 
@@ -120,14 +120,14 @@ def update_conversation(
     conversation = db.query(Conversation).filter(
         Conversation.id == conversation_id
     ).first()
-    
+
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    
+
     update_data = conversation_update.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(conversation, field, value)
-    
+
     db.commit()
     db.refresh(conversation)
     return conversation
@@ -144,10 +144,10 @@ def delete_conversation(
     conversation = db.query(Conversation).filter(
         Conversation.id == conversation_id
     ).first()
-    
+
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    
+
     db.delete(conversation)
     db.commit()
     return {"message": "Conversation deleted successfully"}
@@ -165,9 +165,9 @@ def get_message_status(
 ):
     """
     Get status of an async message generation.
-    
+
     Use this to poll for updates instead of WebSocket.
-    
+
     Response statuses:
     - pending: Waiting to be processed
     - streaming: Currently generating response
@@ -179,10 +179,10 @@ def get_message_status(
         Message.id == message_id,
         Message.conversation_id == conversation_id
     ).first()
-    
+
     if not message:
         raise HTTPException(status_code=404, detail="Message not found")
-    
+
     return MessageStatusResponse(
         message_id=message.id,
         status=message.status,
@@ -206,21 +206,21 @@ def get_messages(
 ):
     """
     Get messages for a conversation.
-    
+
     Returns messages in chronological order (oldest first).
     """
     # Verify conversation exists
     conversation = db.query(Conversation).filter(
         Conversation.id == conversation_id
     ).first()
-    
+
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    
+
     messages = db.query(Message).filter(
         Message.conversation_id == conversation_id
     ).order_by(Message.timestamp.asc()).offset(skip).limit(limit).all()
-    
+
     return messages
 
 
@@ -232,24 +232,24 @@ async def send_message(
 ):
     """
     Send a message and queue async AI response generation.
-    
+
     Returns immediately with message_id and status=pending.
     The LLM response is generated asynchronously in background.
-    
+
     Client can:
     1. Poll GET /conversations/{id}/messages/{message_id}/status
     2. Use WebSocket for real-time updates
-    
+
     This prevents timeout errors on slow models (CPU-based).
     """
     # Verify conversation exists
     conversation = db.query(Conversation).filter(
         Conversation.id == conversation_id
     ).first()
-    
+
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    
+
     # Create user message
     user_message = Message(
         conversation_id=conversation_id,
@@ -260,7 +260,7 @@ async def send_message(
     )
     db.add(user_message)
     db.flush()
-    
+
     # Create assistant message with pending status
     assistant_message = Message(
         conversation_id=conversation_id,
@@ -269,6 +269,7 @@ async def send_message(
         timestamp=datetime.utcnow(),
         status="pending",
         generation_params={
+            "query": request.query,
             "provider": request.provider,
             "model": request.model,
             "temperature": request.temperature,
@@ -278,10 +279,10 @@ async def send_message(
     )
     db.add(assistant_message)
     db.commit()
-    
+
     conversation.message_count += 1
     db.commit()
-    
+
     # Queue async generation task
     task = generate_response_async.delay(
         message_id=str(assistant_message.id),
@@ -297,11 +298,11 @@ async def send_message(
         model=request.model,
         verify_citations=request.verify_citations,
     )
-    
+
     # Store task ID in message
     assistant_message.generation_task_id = task.id
     db.commit()
-    
+
     # Return immediately with pending status
     return GeneratedMessageResponse(
         message_id=assistant_message.id,
@@ -320,10 +321,10 @@ async def generate_message(
 ):
     """
     Generate a response without a specific conversation.
-    
+
     Use this for one-off queries. If conversation_id is provided,
     messages will be saved to that conversation.
-    
+
     If workspace_id is provided without conversation_id, a new
     conversation will NOT be created - messages won't be persisted.
     """
@@ -331,18 +332,18 @@ async def generate_message(
     workspace = db.query(Workspace).filter(
         Workspace.id == request.workspace_id
     ).first()
-    
+
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
-    
+
     # Get prompt type enum
     try:
         prompt_type = PromptType(request.prompt_type)
     except ValueError:
         prompt_type = PromptType.QA
-    
+
     generation_service = MessageGenerationService(db)
-    
+
     try:
         result = await generation_service.generate_response(
             query=request.query,
@@ -358,7 +359,7 @@ async def generate_message(
             verify_citations=request.verify_citations,
             save_message=request.save_message and request.conversation_id is not None
         )
-        
+
         return GeneratedMessageResponse(
             content=result.content,
             sources=result.sources,
@@ -378,7 +379,7 @@ async def generate_message(
             context_summary=result.context_summary,
             warnings=result.warnings
         )
-        
+
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -394,12 +395,12 @@ async def regenerate_message(
 ):
     """
     Regenerate a response for an existing message.
-    
+
     Useful when the user wants a different response or wants to
     try with different parameters (temperature, model, etc.)
     """
     generation_service = MessageGenerationService(db)
-    
+
     try:
         kwargs = {}
         if request.temperature is not None:
@@ -408,12 +409,12 @@ async def regenerate_message(
             kwargs['model'] = request.model
         if request.provider is not None:
             kwargs['provider'] = request.provider
-        
+
         result = await generation_service.regenerate_response(
             message_id=message_id,
             **kwargs
         )
-        
+
         return GeneratedMessageResponse(
             content=result.content,
             sources=result.sources,
@@ -433,7 +434,7 @@ async def regenerate_message(
             context_summary=result.context_summary,
             warnings=result.warnings
         )
-        
+
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -456,17 +457,17 @@ def delete_message(
         Message.id == message_id,
         Message.conversation_id == conversation_id
     ).first()
-    
+
     if not message:
         raise HTTPException(status_code=404, detail="Message not found")
-    
+
     # Update conversation message count
     conversation = db.query(Conversation).filter(
         Conversation.id == conversation_id
     ).first()
     if conversation:
         conversation.message_count = max(0, conversation.message_count - 1)
-    
+
     db.delete(message)
     db.commit()
     return {"message": "Message deleted successfully"}
@@ -497,14 +498,14 @@ def export_conversation(
     conversation = db.query(Conversation).filter(
         Conversation.id == conversation_id
     ).first()
-    
+
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    
+
     messages = db.query(Message).filter(
         Message.conversation_id == conversation_id
     ).order_by(Message.timestamp.asc()).all()
-    
+
     if format == "markdown":
         # Export as markdown
         md_lines = [
@@ -516,22 +517,22 @@ def export_conversation(
             "---",
             ""
         ]
-        
+
         for msg in messages:
             role = "**User:**" if msg.role == "user" else "**Assistant:**"
             md_lines.append(role)
             md_lines.append(msg.content)
-            
+
             if msg.role == "assistant" and msg.sources:
                 md_lines.append("")
                 md_lines.append(f"*Sources: {len(msg.sources)} documents*")
-            
+
             md_lines.append("")
             md_lines.append("---")
             md_lines.append("")
-        
+
         return {"format": "markdown", "content": "\n".join(md_lines)}
-    
+
     else:
         # Export as JSON
         return {

@@ -22,9 +22,9 @@ class Settings(BaseSettings):
     # Redis (use env var if available)
     REDIS_URL: str = "redis://redis:6379/0"
 
-    # Embeddings (via Ollama - nomic-embed-text for M-series Macs)
-    EMBEDDING_MODEL: str = "nomic-embed-text"
-    EMBEDDING_DIMENSION: int = 768
+    # Embeddings (via Ollama - all-minilm:22m for compatibility with Vector(384))
+    EMBEDDING_MODEL: str = "all-minilm:22m"
+    EMBEDDING_DIMENSION: int = 384
     BATCH_SIZE: int = 4
 
     # LLM
@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     # Chunking
     DEFAULT_CHUNK_SIZE: int = 512
     CHUNK_OVERLAP: int = 50
+
+    # Document Agent (v2)
+    DOCUMENT_AGENT_POOL_SIZE: int = 20  # Max concurrent agents in memory
+    AGENT_RELEVANCE_THRESHOLD: float = 0.1  # Min score for document selection
+    AGENT_TOP_K_DOCS: int = 5  # Default docs per query
 
     class Config:
         env_file = ".env"

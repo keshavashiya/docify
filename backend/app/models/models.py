@@ -25,6 +25,35 @@ class Workspace(Base):
     conversations = relationship("Conversation", back_populates="workspace", cascade="all, delete-orphan")
 
 
+class DocumentAgentMetadata(Base):
+    """Metadata for per-document agent indices (v2)"""
+    __tablename__ = "document_agent_metadata"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    resource_id = Column(UUID(as_uuid=True), ForeignKey("resources.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+
+    # Content analysis
+    content_hash = Column(String(64), nullable=True)
+    keywords = Column(ARRAY(Text), default=[])
+    summary = Column(Text, nullable=True)
+
+    # Index status tracking
+    vector_index_status = Column(String(20), default="pending")  # pending, processing, ready, error
+    keyword_index_status = Column(String(20), default="pending")
+    summary_index_status = Column(String(20), default="pending")
+
+    # Statistics
+    avg_chunk_size = Column(Integer, nullable=True)
+    total_chunks = Column(Integer, nullable=True)
+    doc_type = Column(String(50), nullable=True)  # Inferred type for routing
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationship
+    resource = relationship("Resource", back_populates="doc_agent_metadata")
+
+
 class Resource(Base):
     """Resource model with deduplication support"""
     __tablename__ = "resources"
@@ -56,10 +85,17 @@ class Resource(Base):
     query_count = Column(Integer, default=0)
     citation_count = Column(Integer, default=0)
 
+    # Document Agent fields (v2)
+    doc_agent_cache = Column(JSONB, nullable=True)
+    relevance_keywords = Column(ARRAY(Text), default=[])
+    access_count = Column(Integer, default=0)
+    last_accessed_at = Column(DateTime, nullable=True)
+
     # Relationships
     workspace = relationship("Workspace", back_populates="resources")
     chunks = relationship("Chunk", back_populates="resource", cascade="all, delete-orphan")
     duplicates = relationship("Resource", remote_side=[id])
+    doc_agent_metadata = relationship("DocumentAgentMetadata", back_populates="resource", uselist=False, cascade="all, delete-orphan")
 
 
 class Chunk(Base):
@@ -135,7 +171,7 @@ class Message(Base):
     status = Column(String(20), default="pending")  # pending, streaming, complete, error
     generation_task_id = Column(String(200), nullable=True, index=True)  # Celery task ID
     error_message = Column(Text, nullable=True)
-    
+
     # Generation parameters (for async tasks)
     generation_params = Column(JSONB, default={})  # {provider, model, temperature, max_tokens, etc}
 
