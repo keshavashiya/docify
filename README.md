@@ -43,33 +43,72 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for complete technical details.
 - 8GB RAM minimum (16GB recommended)
 - 20GB disk space (for models and data)
 
-### Docker Setup (Recommended)
+### One-Command Setup ⚡
 
+**macOS / Linux:**
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/docify.git
+git clone https://github.com/keshavashiya/docify.git
 cd docify
 
-# Copy environment configuration
-cp .env.example .env
-
-# Start all services
-docker-compose up -d --build
-
-# Wait for services to be healthy (~2-3 minutes)
-docker-compose ps
-
-# Initialize database (one-time setup)
-docker-compose exec postgres psql -U docify -d docify -c "CREATE EXTENSION IF NOT EXISTS vector"
-docker-compose exec backend alembic upgrade head
-
-# Download optimized models (one-time, ~2GB total)
-docker-compose exec ollama ollama pull mistral:7b-instruct-q4_0
-docker-compose exec ollama ollama pull all-minilm:22m
-
-# Restart services with models loaded
-docker-compose restart backend celery-worker
+# Run the setup script (handles everything!)
+./scripts/setup.sh
 ```
+
+**Windows (PowerShell):**
+```powershell
+# Clone the repository
+git clone https://github.com/keshavashiya/docify.git
+cd docify
+
+# Run the setup script (handles everything!)
+.\scripts\setup.ps1
+```
+
+That's it! The setup script will:
+- ✅ Check prerequisites (Docker, memory, disk space)
+- ✅ Create environment configuration
+- ✅ Start all Docker services
+- ✅ Initialize the database with pgvector
+- ✅ Download AI models (~4GB, may take 10-15 min)
+- ✅ Verify everything is working
+
+**Options:**
+```bash
+# macOS / Linux
+./scripts/setup.sh --skip-models  # Skip model download (faster setup)
+./scripts/setup.sh --reset        # Reset everything and start fresh
+./scripts/setup.sh --help         # Show all options
+
+# Windows (PowerShell)
+.\scripts\setup.ps1 -SkipModels   # Skip model download
+.\scripts\setup.ps1 -Reset        # Reset everything
+.\scripts\setup.ps1 -Help         # Show all options
+```
+
+### After Setup
+
+**macOS / Linux:**
+```bash
+./scripts/start.sh           # Start Docify (quick start for daily use)
+./scripts/start.sh --logs    # Start and follow logs
+./scripts/start.sh --stop    # Stop all services
+./scripts/start.sh --status  # Show service status
+```
+
+**Windows (PowerShell):**
+```powershell
+.\scripts\start.ps1           # Start Docify
+.\scripts\start.ps1 -Logs     # Start and follow logs
+.\scripts\start.ps1 -Stop     # Stop all services
+.\scripts\start.ps1 -Status   # Show service status
+```
+
+### Access
+
+- **Frontend**: http://localhost:3000
+- **API Docs & Testing**: http://localhost:8000/docs
+- **Health Endpoint**: http://localhost:8000/api/health
 
 ### Verify Setup
 
@@ -88,11 +127,40 @@ docker-compose logs -f backend
 docker-compose logs -f celery-worker
 ```
 
-### Access
+---
 
-- **Frontend**: http://localhost:3000
-- **API Docs & Testing**: http://localhost:8000/docs
-- **Health Endpoint**: http://localhost:8000/api/health
+<details>
+<summary><b>📋 Manual Setup (Advanced Users)</b></summary>
+
+If you prefer to run each step manually:
+
+```bash
+# Clone and enter directory
+git clone https://github.com/keshavashiya/docify.git
+cd docify
+
+# Copy environment configuration
+cp .env.example .env
+
+# Start all services
+docker-compose up -d --build
+
+# Wait for services to be healthy (~2-3 minutes)
+docker-compose ps
+
+# Initialize database (one-time setup)
+docker-compose exec postgres psql -U docify -d docify -c "CREATE EXTENSION IF NOT EXISTS vector"
+docker-compose exec backend alembic upgrade head
+
+# Download optimized models (one-time, ~4GB total)
+docker-compose exec ollama ollama pull mistral:7b-instruct-q4_0
+docker-compose exec ollama ollama pull all-minilm:22m
+
+# Restart services with models loaded
+docker-compose restart backend celery-worker
+```
+
+</details>
 
 ## 🛠️ Local Development
 
